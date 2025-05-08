@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+avian3d = { git = "https://github.com/Jondolf/avian", branch = "main" }
 bevy = { version = "0.16.0", features = [ "dynamic_linking" ] }
 
 [profile.dev]
