@@ -1,45 +1,122 @@
 use bevy::prelude::*;
-use boids::BoidsPlugin;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use boid::{BoidsPlugin, Speed};
 
-pub mod boids {
-    use avian3d::prelude::*;
-    use bevy::{
-        math::{DQuat, DVec4},
-        prelude::*,
-    };
+pub mod boid {
+    use bevy::prelude::*;
+    use bevy_inspector_egui::prelude::*;
+    use bevy_rand::prelude::*;
+
+    const BOID_LENGTH: f32 = 0.5f32;
+    const TANK_WIDTH: f32 = 160.0f32;
+    const TANK_HEIGHT: f32 = 90.0f32;
+    const TANK_DEPTH: f32 = 90.0f32;
+
     pub struct BoidsPlugin;
 
     impl Plugin for BoidsPlugin {
         fn build(&self, app: &mut App) {
-            app.add_plugins(PhysicsPlugins::default())
-                .insert_resource(AmbientLight {
-                    brightness: 2.0,
-                    ..default()
-                })
-                .insert_resource(ClearColor(Color::srgb(0.0, 0.0, 0.0)))
-                .insert_resource(Gravity(Vec3::ZERO))
-                .add_systems(Startup, spawn_boids::<3>);
+            app.insert_resource(AmbientLight {
+                brightness: 2.0,
+                ..default()
+            })
+            .add_plugins(EntropyPlugin::<WyRand>::default())
+            .insert_resource(ClearColor(Color::srgb(0.8, 0.8, 0.8)))
+            .add_systems(Startup, spawn_boids::<3>)
+            .add_systems(Update, (step, show_tank_bounds));
         }
     }
 
     #[derive(Component)]
-    struct Boid;
+    pub struct Tank;
 
-    fn spawn_boids<const N: u32>(
+    #[derive(Component)]
+    pub struct Boid;
+
+    #[derive(Component, Reflect, Default, InspectorOptions)]
+    #[reflect(Component, InspectorOptions)]
+    pub struct Speed {
+        /// The maximum speed of this boid in meters per second
+        max: f32,
+
+        /// The current speed of this boid (note, this is the magnitude of the velocity).
+        /// The actual velocity should be this value times the rotation.
+        #[inspector(min = 0.0, max = 5.0)]
+        current: f32,
+    }
+
+    pub fn spawn_tank(
         mut cmds: Commands,
         mut meshes: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<StandardMaterial>>,
     ) {
-        for n in 0..N {
+        cmds.spawn((
+            Tank,
+            Mesh3d(meshes.add(Cuboid::new(TANK_WIDTH, TANK_HEIGHT, TANK_DEPTH))),
+            MeshMaterial3d(materials.add(Color::srgba_u8(0, 0, 255, 128))),
+            Transform::from_xyz(0.0, 0.0, 0.0),
+        ));
+    }
+
+    pub fn show_tank_bounds(mut gizmos: Gizmos) {
+        gizmos.cuboid(
+            Transform::IDENTITY.with_scale(Vec3::new(TANK_WIDTH, TANK_HEIGHT, TANK_DEPTH)),
+            Color::BLACK,
+        );
+    }
+
+    pub fn spawn_boids<const NUM: u32>(
+        mut cmds: Commands,
+        mut meshes: ResMut<Assets<Mesh>>,
+        mut materials: ResMut<Assets<StandardMaterial>>,
+    ) {
+        for n in 0..NUM {
             cmds.spawn((
                 Boid,
-                RigidBody::Dynamic,
-                Collider::cone(0.25, 1.0),
-                Mesh3d(meshes.add(Cone::new(0.125, 0.5))),
+                Mesh3d(meshes.add(Cone::new(BOID_LENGTH / 4.0, BOID_LENGTH))),
                 MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-                Transform::from_xyz(0.0 + 1.0 * n as f32, 0.0 + 1.0 * n as f32, 0.0),
-                LinearVelocity(Vec3::new(0.0, 1.0, 0.0)),
+                Transform::from_xyz(0.0 + 1.0 * n as f32, 0.0 + 1.0 * n as f32, 0.0)
+                    .looking_to(Dir3::Y, Dir3::X),
+                Speed {
+                    max: 5.0,
+                    current: 5.0,
+                },
             ));
+        }
+    }
+
+    pub fn alignment() {}
+
+    pub fn cohesion() {}
+
+    pub fn separation() {}
+    pub fn step(time: Res<Time>, mut query: Query<(&mut Transform, &Speed), With<Boid>>) {
+        for (mut t, s) in &mut query {
+            // Using "up" because cone points are in that direction.
+            t.translation = t.translation + (t.up() * s.current * time.delta_secs());
+
+            info!("{}", t.translation);
+
+            // Magically wrap space for the tank a la pacman
+            if t.translation.x > TANK_WIDTH / 2.0 {
+                t.translation.x = -(TANK_WIDTH / 2.0);
+            }
+            if t.translation.x < -(TANK_WIDTH / 2.0) {
+                t.translation.x = TANK_WIDTH / 2.0;
+            }
+            if t.translation.y > TANK_WIDTH / 2.0 {
+                t.translation.y = -(TANK_WIDTH / 2.0);
+            }
+            if t.translation.y < -(TANK_WIDTH / 2.0) {
+                t.translation.y = TANK_WIDTH / 2.0;
+            }
+            if t.translation.z > TANK_WIDTH / 2.0 {
+                t.translation.z = -(TANK_WIDTH / 2.0);
+            }
+            if t.translation.z < -(TANK_WIDTH / 2.0) {
+                t.translation.z = TANK_WIDTH / 2.0;
+            }
         }
     }
 }
@@ -48,6 +125,11 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(BoidsPlugin)
+        .add_plugins(EguiPlugin {
+            enable_multipass_for_primary_context: true,
+        })
+        .add_plugins(WorldInspectorPlugin::new())
+        .register_type::<Speed>()
         .add_systems(Startup, spawn_lights)
         .add_systems(Update, || {})
         .run();
@@ -64,6 +146,6 @@ fn spawn_lights(mut cmds: Commands) {
 
     cmds.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 0.0, 10.0).looking_at(Vec3::ZERO, Dir3::Y),
+        Transform::from_xyz(2.0, 3.0, 140.0).looking_at(Vec3::ZERO, Dir3::Y),
     ));
 }
