@@ -6,12 +6,12 @@ use boid::{BoidsPlugin, Speed};
 pub mod boid {
     use bevy::prelude::*;
     use bevy_inspector_egui::prelude::*;
-    use bevy_rand::prelude::*;
+    use rand::{self, Rng, SeedableRng, rngs::SmallRng};
 
-    const BOID_LENGTH: f32 = 0.5f32;
-    const TANK_WIDTH: f32 = 160.0f32;
-    const TANK_HEIGHT: f32 = 90.0f32;
-    const TANK_DEPTH: f32 = 90.0f32;
+    pub const BOID_LENGTH: f32 = 0.5f32;
+    pub const TANK_WIDTH: f32 = 80.0f32;
+    pub const TANK_HEIGHT: f32 = 45.0f32;
+    pub const TANK_DEPTH: f32 = 45.0f32;
 
     pub struct BoidsPlugin;
 
@@ -21,12 +21,15 @@ pub mod boid {
                 brightness: 2.0,
                 ..default()
             })
-            .add_plugins(EntropyPlugin::<WyRand>::default())
             .insert_resource(ClearColor(Color::srgb(0.8, 0.8, 0.8)))
-            .add_systems(Startup, spawn_boids::<3>)
+            .insert_resource(BoidRng(SmallRng::from_rng(&mut rand::rng())))
+            .add_systems(Startup, (spawn_tank, spawn_boids::<50>))
             .add_systems(Update, (step, show_tank_bounds));
         }
     }
+
+    #[derive(Resource)]
+    pub struct BoidRng(SmallRng);
 
     #[derive(Component)]
     pub struct Tank;
@@ -68,16 +71,19 @@ pub mod boid {
 
     pub fn spawn_boids<const NUM: u32>(
         mut cmds: Commands,
+        mut rng: ResMut<BoidRng>,
         mut meshes: ResMut<Assets<Mesh>>,
         mut materials: ResMut<Assets<StandardMaterial>>,
     ) {
-        for n in 0..NUM {
+        for _ in 0..NUM {
+            let x: f32 = rng.0.random_range(-TANK_WIDTH / 2.0..TANK_WIDTH / 2.0);
+            let y: f32 = rng.0.random_range(-TANK_HEIGHT / 2.0..TANK_HEIGHT / 2.0);
+            let z: f32 = rng.0.random_range(-TANK_DEPTH / 2.0..TANK_DEPTH / 2.0);
             cmds.spawn((
                 Boid,
                 Mesh3d(meshes.add(Cone::new(BOID_LENGTH / 4.0, BOID_LENGTH))),
                 MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-                Transform::from_xyz(0.0 + 1.0 * n as f32, 0.0 + 1.0 * n as f32, 0.0)
-                    .looking_to(Dir3::Y, Dir3::X),
+                Transform::from_xyz(x, y, z).looking_to(Dir3::Y, Dir3::X),
                 Speed {
                     max: 5.0,
                     current: 5.0,
@@ -146,6 +152,6 @@ fn spawn_lights(mut cmds: Commands) {
 
     cmds.spawn((
         Camera3d::default(),
-        Transform::from_xyz(2.0, 3.0, 140.0).looking_at(Vec3::ZERO, Dir3::Y),
+        Transform::from_xyz(0.0, 0.0, boid::TANK_WIDTH).looking_at(Vec3::ZERO, Dir3::Y),
     ));
 }
