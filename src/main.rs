@@ -1,6 +1,7 @@
+use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy::prelude::*;
-use bevy_inspector_egui::bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+//use bevy_inspector_egui::bevy_egui::EguiPlugin;
+//use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use boid::{BoidsPlugin, Speed};
 
 pub mod boid {
@@ -23,7 +24,7 @@ pub mod boid {
             })
             .insert_resource(ClearColor(Color::srgb_u8(0, 0, 0)))
             .insert_resource(BoidRng(SmallRng::from_rng(&mut rand::rng())))
-            .add_systems(Startup, (spawn_tank, spawn_boids::<50>))
+            .add_systems(Startup, (spawn_tank, spawn_boids::<1000>))
             .add_systems(Update, show_tank_bounds)
             .add_systems(Update, ((alignment, cohesion, separation), step).chain());
         }
@@ -42,9 +43,6 @@ pub mod boid {
     pub struct Perception {
         radius: f32,
     }
-
-    #[derive(Component)]
-    pub struct NextSpeed(f32);
 
     #[derive(Component)]
     pub struct AlignmentDir(Dir3);
@@ -69,7 +67,6 @@ pub mod boid {
     pub fn spawn_tank(
         mut cmds: Commands,
         mut meshes: ResMut<Assets<Mesh>>,
-        mut materials: ResMut<Assets<StandardMaterial>>,
     ) {
         cmds.spawn((
             Tank,
@@ -109,7 +106,7 @@ pub mod boid {
             cmds.spawn((
                 Boid,
                 Mesh3d(meshes.add(Cone::new(BOID_LENGTH / 4.0, BOID_LENGTH))),
-                MeshMaterial3d(materials.add(Color::srgb(1.0, 1.0, 1.0))),
+                MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.5))),
                 Transform::from_xyz(x, y, z).looking_to(la_fw, la_up),
                 Speed {
                     max: 5.0,
@@ -124,14 +121,13 @@ pub mod boid {
     }
 
     pub fn alignment(
-        mut query: Query<(Entity, &Transform, &Speed, &Perception, &mut AlignmentDir), With<Boid>>,
-        others: Query<(Entity, &Transform, &Speed), With<Boid>>,
+        mut query: Query<(Entity, &Transform, &Perception, &mut AlignmentDir), With<Boid>>,
+        others: Query<(Entity, &Transform), With<Boid>>,
     ) {
-        for (id, t, _s, p, mut la) in &mut query {
+        for (id, t, p, mut la) in &mut query {
             let mut num_others = 0;
             let mut accum_rot = Vec3::ZERO;
-            let mut accum_speed = 0.0;
-            for (o_id, o_t, o_s) in &others {
+            for (o_id, o_t) in &others {
                 if o_id == id {
                     continue;
                 }
@@ -139,7 +135,6 @@ pub mod boid {
                     continue;
                 }
                 accum_rot += *o_t.up();
-                accum_speed += o_s.current;
                 num_others += 1;
             }
             if num_others > 0 {
@@ -188,26 +183,66 @@ pub mod boid {
         }
     }
 
-    pub fn separation(time: Res<Time>, mut query: Query<(&mut Transform, &Speed), With<Boid>>) {}
+    pub fn separation(
+        mut query: Query<(Entity, &Transform, &mut SeparationDir), With<Boid>>,
+        others: Query<(Entity, &Transform), With<Boid>>,
+    ) {
+        for (id, t, mut cd) in &mut query {
+            let mut num_others = 0;
+            let mut accum_other_pos = Vec3::ZERO;
+            for (o_id, o_t) in &others {
+                if o_id == id {
+                    continue;
+                }
+                if t.translation.distance(o_t.translation) < 1.0 {
+                    continue;
+                }
+
+                accum_other_pos -= o_t.translation;
+                num_others += 1;
+            }
+            if num_others > 0 {
+                cd.0 = match (accum_other_pos / num_others as f32).normalize().try_into() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!("Cohesion: Encountered '{e}', falling back to original value");
+                        cd.0
+                    }
+                };
+            }
+        }
+    }
 
     pub fn step(
         time: Res<Time>,
-        mut query: Query<(&mut Transform, &Speed, &AlignmentDir, &CohesionDir), With<Boid>>,
+        mut query: Query<
+            (
+                &mut Transform,
+                &Speed,
+                &AlignmentDir,
+                &CohesionDir,
+                &SeparationDir,
+            ),
+            With<Boid>,
+        >,
     ) {
-        for (mut t, s, la, cd) in &mut query {
+        for (mut t, s, ad, cd, sd) in &mut query {
             // Using "up" because cone points are in that direction.
             let t_forward = t.forward();
             let t_up = t.up();
-            let look_dir = la.0.as_vec3() + cd.0.as_vec3();
+            let look_dir = ad.0.as_vec3() + cd.0.as_vec3() + sd.0.as_vec3();
             t.look_to(
                 *t_forward.slerp(
-                    match la.0.any_orthonormal_vector().try_into() {
+                    match ad.0.any_orthonormal_vector().try_into() {
                         Ok(v) => v,
                         Err(_) => t_forward,
                     },
                     time.delta_secs(),
                 ),
-                *t_up.slerp(look_dir.try_into().expect("Should convert from lookdir"), time.delta_secs()),
+                *t_up.slerp(
+                    look_dir.try_into().expect("Should convert from lookdir"),
+                    time.delta_secs(),
+                ),
             );
             t.translation = t.translation + (t.up() * s.current * time.delta_secs());
 
@@ -238,10 +273,21 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(BoidsPlugin)
-        .add_plugins(EguiPlugin {
-            enable_multipass_for_primary_context: true,
+        //.add_plugins(EguiPlugin {
+        //    enable_multipass_for_primary_context: true,
+        //})
+        //.add_plugins(WorldInspectorPlugin::new())
+        .add_plugins(FpsOverlayPlugin {
+            config: FpsOverlayConfig {
+                text_config: TextFont {
+                    font_size: 12.0,
+                    ..default()
+                },
+                text_color: Color::srgb(0.0, 1.0, 0.0),
+                refresh_interval: core::time::Duration::from_millis(100),
+                enabled: true,
+            },
         })
-        .add_plugins(WorldInspectorPlugin::new())
         .register_type::<Speed>()
         .add_systems(Startup, spawn_lights)
         .add_systems(Update, || {})
