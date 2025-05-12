@@ -109,10 +109,10 @@ pub mod boid {
                 MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.5))),
                 Transform::from_xyz(x, y, z).looking_to(la_fw, la_up),
                 Speed {
-                    max: 5.0,
-                    current: 5.0,
+                    max: 10.0,
+                    current: 10.0,
                 },
-                Perception { radius: 8.0 },
+                Perception { radius: 20.0 },
                 AlignmentDir(la_up),
                 CohesionDir(la_up),
                 SeparationDir(la_up),
@@ -194,7 +194,7 @@ pub mod boid {
                 if o_id == id {
                     continue;
                 }
-                if t.translation.distance(o_t.translation) < 1.0 {
+                if t.translation.distance(o_t.translation) < 10.0 {
                     continue;
                 }
 
