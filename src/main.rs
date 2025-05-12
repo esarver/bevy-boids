@@ -21,7 +21,7 @@ pub mod boid {
                 brightness: 2.0,
                 ..default()
             })
-            .insert_resource(ClearColor(Color::srgb(0.8, 0.8, 0.8)))
+            .insert_resource(ClearColor(Color::srgb_u8(0, 0, 0)))
             .insert_resource(BoidRng(SmallRng::from_rng(&mut rand::rng())))
             .add_systems(Startup, (spawn_tank, spawn_boids::<50>))
             .add_systems(Update, show_tank_bounds)
@@ -74,7 +74,7 @@ pub mod boid {
         cmds.spawn((
             Tank,
             Mesh3d(meshes.add(Cuboid::new(TANK_WIDTH, TANK_HEIGHT, TANK_DEPTH))),
-            MeshMaterial3d(materials.add(Color::srgba_u8(0, 0, 255, 128))),
+            //MeshMaterial3d(materials.add(Color::srgba_u8(0, 0, 255, 255/3))),
             Transform::from_xyz(0.0, 0.0, 0.0),
         ));
     }
@@ -82,7 +82,7 @@ pub mod boid {
     pub fn show_tank_bounds(mut gizmos: Gizmos) {
         gizmos.cuboid(
             Transform::IDENTITY.with_scale(Vec3::new(TANK_WIDTH, TANK_HEIGHT, TANK_DEPTH)),
-            Color::BLACK,
+            Color::srgb(0.25, 0.25, 0.25),
         );
     }
 
@@ -109,7 +109,7 @@ pub mod boid {
             cmds.spawn((
                 Boid,
                 Mesh3d(meshes.add(Cone::new(BOID_LENGTH / 4.0, BOID_LENGTH))),
-                MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
+                MeshMaterial3d(materials.add(Color::srgb(1.0, 1.0, 1.0))),
                 Transform::from_xyz(x, y, z).looking_to(la_fw, la_up),
                 Speed {
                     max: 5.0,
@@ -250,6 +250,10 @@ fn main() {
 
 fn spawn_lights(mut cmds: Commands) {
     cmds.spawn((
+        DirectionalLight {
+            color: Color::srgb_u8(255, 255, 255),
+            ..default()
+        },
         PointLight {
             shadows_enabled: true,
             ..default()
